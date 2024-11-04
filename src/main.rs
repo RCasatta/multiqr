@@ -118,7 +118,7 @@ fn estimate_chunk(content: &[u8], desired_version: u8) -> Result<usize, &'static
 
     let desired_version = desired_version as i16;
     let mut total = content.len();
-    loop {
+    let chunk_size = loop {
         match QrCode::new(&content[..total]) {
             Ok(qr) => {
                 let width = match qr.version() {
@@ -133,7 +133,7 @@ fn estimate_chunk(content: &[u8], desired_version: u8) -> Result<usize, &'static
                 }
 
                 if width == desired_version {
-                    return Ok(total);
+                    break total;
                 }
                 total = if width > desired_version {
                     total / 2
@@ -152,7 +152,13 @@ fn estimate_chunk(content: &[u8], desired_version: u8) -> Result<usize, &'static
                 panic!("should not happen");
             }
         }
-    }
+    };
+
+    // Make chunks more similar instead of having the last one shorter
+    let pieces = (content.len() / chunk_size) + 1;
+    let new_chunk_size = (content.len() / pieces) + 1;
+
+    Ok(new_chunk_size)
 }
 
 fn print_qr(i: usize, qr: &QrCode, border: u8, result: &mut String, len: usize, label: &str) {
@@ -186,6 +192,7 @@ mod test {
             let version: u8 = rng.gen::<u8>() % 40 + 1;
             let chunk = estimate_chunk(data.as_ref(), version).unwrap();
             println!("size:{size} chunk:{chunk} version:{version}");
+
             assert!(chunk <= size);
             assert!(chunk > 0);
         }
