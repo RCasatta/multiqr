@@ -30,8 +30,10 @@ pub struct Params {
 }
 
 fn main() {
-    if let Err(e) = inner_main() {
-        println!("{e:?}");
+    match inner_main() {
+        Err(Error::Other(s)) => println!("{s}"),
+        Err(e) => println!("{e:?}"),
+        Ok(_) => (),
     }
 }
 
