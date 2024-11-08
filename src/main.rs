@@ -3,7 +3,7 @@ use std::io::Read;
 
 // TODO how to show multiple lines in clap help?
 
-/// The `multiqr` utility accept an ascii string (trimming newlines) from std input and convert it to one or more QR codes.
+/// The `multiqr` utility accept an ascii string (trimming control characters like new lines) from std input and convert it to one or more QR codes.
 ///
 /// It's more efficient to use the following characters for QR code efficiency:
 /// 0–9, A–Z (upper-case only), space, $, %, *, +, -, ., /, :
@@ -59,13 +59,10 @@ pub fn read_stdin() -> Result<Vec<u8>, &'static str> {
         .map_err(|_| "error reading stdin")?;
     let mut result = vec![];
 
-    for el in buffer.into_iter().filter(|e| *e != b'\n') {
+    for el in buffer.into_iter().filter(|e| !e.is_ascii_control()) {
         let c = char::from(el);
         if !c.is_ascii() {
             return Err("Standard input contains non ascii chars");
-        }
-        if c.is_ascii_control() {
-            return Err("Standard input contains ascii control chars");
         }
         result.push(el);
     }
