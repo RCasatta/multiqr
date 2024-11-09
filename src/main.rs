@@ -25,6 +25,10 @@ pub struct Params {
     #[arg(long, default_value_t = 6)]
     empty_lines: u8,
 
+    /// Invert the QR code modules, can be useful for printing
+    #[arg(long)]
+    invert: bool,
+
     #[arg(long)]
     label: Option<String>,
 }
@@ -40,13 +44,7 @@ fn main() {
 fn inner_main() -> Result<(), Error> {
     let params = Params::parse();
     let stdin = read_stdin().map_err(|e| Error::Other(e))?;
-    let qr = qr(
-        &stdin,
-        params.qr_version,
-        params.border,
-        params.empty_lines,
-        params.label,
-    )?;
+    let qr = qr(&stdin, params)?;
     println!("{qr}");
     Ok(())
 }
@@ -77,14 +75,15 @@ pub enum Error {
     Other(&'static str),
 }
 
-fn qr(
-    content: &[u8],
-    version: u8,
-    border: u8,
-    empty_lines: u8,
-    label: Option<String>,
-) -> Result<String, Error> {
-    let chunk_size = estimate_chunk(content, version).map_err(|e| Error::Other(e))?;
+fn qr(content: &[u8], params: Params) -> Result<String, Error> {
+    let Params {
+        qr_version,
+        border,
+        empty_lines,
+        invert,
+        label,
+    } = params;
+    let chunk_size = estimate_chunk(content, qr_version).map_err(|e| Error::Other(e))?;
 
     let mut result = String::new();
     let empty_lines = "\n".repeat(empty_lines as usize);
@@ -94,7 +93,7 @@ fn qr(
     let len = splitted_data.len();
     for (i, data) in splitted_data.iter().enumerate() {
         let qr = QrCode::new(data).map_err(|e| Error::Qr(e))?;
-        print_qr(i, &qr, border, &mut result, len, label);
+        print_qr(i, &qr, border, &mut result, len, label, invert);
         if i < len - 1 {
             result.push_str(&empty_lines);
         }
@@ -159,7 +158,15 @@ fn estimate_chunk(content: &[u8], desired_version: u8) -> Result<usize, &'static
     Ok(new_chunk_size)
 }
 
-fn print_qr(i: usize, qr: &QrCode, border: u8, result: &mut String, len: usize, label: &str) {
+fn print_qr(
+    i: usize,
+    qr: &QrCode,
+    border: u8,
+    result: &mut String,
+    len: usize,
+    label: &str,
+    invert: bool,
+) {
     let version = match qr.version() {
         qr_code::Version::Normal(x) => x,
         qr_code::Version::Micro(x) => -x,
@@ -171,7 +178,7 @@ fn print_qr(i: usize, qr: &QrCode, border: u8, result: &mut String, len: usize, 
     result.push_str(&spaces);
     result.push_str(&number);
 
-    result.push_str(&qr.to_string(true, border));
+    result.push_str(&qr.to_string(!invert, border));
 }
 
 #[cfg(test)]
