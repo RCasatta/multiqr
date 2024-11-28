@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::io::Read;
+use std::path::PathBuf;
 
 // TODO how to show multiple lines in clap help?
 
@@ -29,8 +30,17 @@ pub struct Params {
     #[arg(long)]
     invert: bool,
 
+    /// Add a label at the top of the QR code
     #[arg(long)]
     label: Option<String>,
+
+    /// Write a bmp file at this path instead of printing the QR code to terminal. eg "file.bmp"
+    #[arg(long)]
+    bmp: Option<PathBuf>,
+
+    /// The number of pixels for every QR code module
+    #[arg(long, default_value_t = 12)]
+    bmp_pixel_per_module: u8,
 }
 
 fn main() {
@@ -67,12 +77,14 @@ pub fn read_stdin() -> Result<Vec<u8>, &'static str> {
     Ok(result)
 }
 
-use qr_code::{types::QrError, QrCode, Version};
+use qr_code::{bmp_monochrome::BmpError, types::QrError, QrCode, Version};
 
 #[derive(Debug)]
 pub enum Error {
     Qr(QrError),
     Other(&'static str),
+    Bmp(BmpError),
+    Io(std::io::Error),
 }
 
 fn qr(content: &[u8], params: Params) -> Result<String, Error> {
@@ -82,7 +94,29 @@ fn qr(content: &[u8], params: Params) -> Result<String, Error> {
         empty_lines,
         invert,
         label,
+        bmp,
+        bmp_pixel_per_module,
     } = params;
+    let bmp_file = match bmp.as_ref() {
+        Some(file) => {
+            let stem = file
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or(Error::Other("--bmp file has not a stem"))?;
+            let ext = file
+                .extension()
+                .and_then(|s| s.to_str())
+                .ok_or(Error::Other("--bmp file has not an extension"))?;
+            if ext != "bmp" {
+                return Err(Error::Other(
+                    "--bmp specify a file not having bmp extension",
+                ));
+            }
+            Some((file, stem, ext))
+        }
+        None => None,
+    };
+
     let chunk_size = estimate_chunk(content, qr_version).map_err(|e| Error::Other(e))?;
 
     let mut result = String::new();
@@ -92,10 +126,32 @@ fn qr(content: &[u8], params: Params) -> Result<String, Error> {
     let splitted_data = content.chunks(chunk_size).collect::<Vec<_>>();
     let len = splitted_data.len();
     for (i, data) in splitted_data.iter().enumerate() {
-        let qr = QrCode::new(data).map_err(|e| Error::Qr(e))?;
-        print_qr(i, &qr, border, &mut result, len, label, invert);
-        if i < len - 1 {
-            result.push_str(&empty_lines);
+        let qr = QrCode::new(data).map_err(Error::Qr)?;
+        match bmp_file {
+            None => {
+                print_qr(i, &qr, border, &mut result, len, label, invert);
+                if i < len - 1 {
+                    result.push_str(&empty_lines);
+                }
+            }
+            Some((file, stem, ext)) => {
+                let file = if len > 1 {
+                    let mut numbered_file = file.clone();
+                    numbered_file.set_file_name(format!("{stem}_{i}.{ext}"));
+                    numbered_file
+                } else {
+                    file.clone()
+                };
+                let bmp = qr
+                    .to_bmp()
+                    .add_white_border(4)
+                    .map_err(Error::Bmp)?
+                    .mul(bmp_pixel_per_module)
+                    .map_err(Error::Bmp)?;
+
+                bmp.write(std::fs::File::create(file).map_err(Error::Io)?)
+                    .map_err(Error::Bmp)?;
+            }
         }
     }
 

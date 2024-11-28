@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.20", features = ["derive", "env"] }
-qr_code = { version = "2.0.0" }
+qr_code = { version = "2.0.0", features = ["bmp"] }
 
 [dev-dependencies]
 rand = "0.8.5"
